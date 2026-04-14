@@ -1,0 +1,11 @@
+node_modules/
+config.json
+gacha.db
+*.db-shm
+*.db-wal
+*.db-journal
+.claude/
+*.csv
+*.xlsx
+*.txt
+CLAUDE.md

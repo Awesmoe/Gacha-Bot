@@ -1,0 +1,14 @@
+{
+  "name": "gacha-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for tracking gacha pulls across multiple games",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "better-sqlite3": "^11.7.0"
+  }
+}

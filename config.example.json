@@ -1,0 +1,6 @@
+{
+  "token": "YOUR_BOT_TOKEN",
+  "clientId": "YOUR_APPLICATION_CLIENT_ID",
+  "guildId": "YOUR_TEST_GUILD_ID_OR_EMPTY_FOR_GLOBAL",
+  "bannerAdmins": ["YOUR_DISCORD_USER_ID"]
+}
