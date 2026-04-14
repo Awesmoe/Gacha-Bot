@@ -18,12 +18,15 @@ Runs on a Raspberry Pi 4 under PM2. Uses discord.js 14 with slash commands and b
 
 | Command | Description |
 |---|---|
+| `/help` | Step-by-step instructions for getting your token/authkey and importing |
 | `/import` | Import your pull history from the game API |
 | `/stats` | Pity counters, 50/50 record, pull statistics |
 | `/history` | 5★/6★ timeline with pity and 50/50 results |
 | `/gryph` | (Admin) Manage Endfield banner → character mappings |
 | `/hoyo` | (Admin) Manage HSR/Genshin banner schedule for 50/50 detection |
 | `/delete` | Delete your stored pull data |
+
+`/help` accepts a `game` option and walks you through extracting the token/authkey from your local game cache using a PowerShell one-liner, then shows the exact `/import` command to run. Start here.
 
 ## Supported Games
 
