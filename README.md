@@ -74,19 +74,19 @@ If a 6★ pull lands on a banner not in the DB, it shows as "Unknown banner" ins
 
 HSR uses two mechanisms in priority order:
 
-**Tier 1 — `gacha-ids.js`:** The HSR API returns a `gacha_id` per pull (e.g. `2109`), which uniquely identifies a banner instance. `games/starrail/gacha-ids.js` maps known gacha_ids to their featured character(s). This is the most accurate method.
+**Tier 1 — `gacha_id_map` table:** The HSR API returns a `gacha_id` per pull (e.g. `2109`), which uniquely identifies a banner instance. The `gacha_id_map` SQLite table maps known gacha_ids to their featured character(s). This is the most accurate method.
 
-**Tier 2 — Banner schedule:** If a gacha_id isn't yet in `gacha-ids.js`, the bot falls back to matching the pull's timestamp against the banner schedule DB (`banner_schedule` table). Admins populate this via:
+**Tier 2 — Banner schedule:** If a gacha_id isn't yet in `gacha_id_map`, the bot falls back to matching the pull's timestamp against the banner schedule DB (`banner_schedule` table). Admins populate this via:
 
 ```
 /hoyo add game:starrail banner_type:character start_date:YYYY-MM-DD end_date:YYYY-MM-DD featured:"Char1,Char2"
 ```
 
-**Unknown gacha_id logging:** During import, any `gacha_id` not in `gacha-ids.js` is logged to `HSR_UNKNOWN_GACHA_IDS.txt` (in the repo root) with timestamp and inferred featured names. Review this file after new banners appear and add confirmed entries to `gacha-ids.js`.
+**Auto-discovery:** During `/import`, any `gacha_id` not yet in `gacha_id_map` is automatically added with featured characters inferred from the schedule. No manual step needed — new banners populate themselves on first import.
 
 ### Genshin Impact — schedule only
 
-Genshin's API uses generic `gacha_type` values (`301`/`400` = character event, `302` = weapon, `200` = standard) rather than per-banner IDs, so a `gacha-ids.js` equivalent isn't needed — all disambiguation is done by timestamp. Populate the schedule the same way as HSR:
+Genshin's API uses generic `gacha_type` values (`301`/`400` = character event, `302` = weapon, `200` = standard) rather than per-banner IDs, so a `gacha_id_map` equivalent isn't needed — all disambiguation is done by timestamp. Populate the schedule the same way as HSR:
 
 ```
 /hoyo add game:genshin banner_type:character start_date:YYYY-MM-DD end_date:YYYY-MM-DD featured:"Nahida"
@@ -103,3 +103,5 @@ Three tables:
 **`banners`** — Endfield banner→character mappings. PK: `(game, pool_name)`. Seeded on first run, extended via `/gryph add`.
 
 **`banner_schedule`** — HSR/Genshin banner schedules. Managed via `/hoyo add/list/remove`. Columns: `game`, `banner_type`, `start_date`, `end_date`, `name`, `featured` (JSON array).
+
+**`gacha_id_map`** — HSR gacha_id → featured character mappings. Auto-populated during `/import` for any new gacha_id encountered. Columns: `gacha_id` (PK), `banner_type`, `featured` (JSON array).
