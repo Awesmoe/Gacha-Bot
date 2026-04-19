@@ -2,7 +2,6 @@ const { EmbedBuilder } = require('discord.js');
 const { analyzePulls } = require('../../lib/analytics');
 const config = require('./config');
 const db = require('../../lib/db');
-const gachaIds = require('./gacha-ids');
 
 const RESULT_LABEL = { won: '✅ Won', lost: '❌ Lost', guaranteed: '🔒 Guaranteed', unknown: '❓' };
 
@@ -33,12 +32,10 @@ function getFeaturedFromGachaId(pull, expectedType) {
   const gachaId = getStoredGachaId(pull);
   if (!gachaId) return null;
 
-  const entry = gachaIds[gachaId];
-  if (!entry || entry.type !== expectedType) return null;
+  const entry = db.getGachaIdMap(gachaId);
+  if (!entry || entry.banner_type !== expectedType) return null;
 
-  return Array.isArray(entry.featured) && entry.featured.length > 0
-    ? entry.featured
-    : null;
+  return entry.featured.length > 0 ? entry.featured : null;
 }
 
 function getFeaturedForPullFromSchedule(pull, schedule) {
