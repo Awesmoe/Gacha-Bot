@@ -96,7 +96,7 @@ The banner schedule needs to be kept up to date for accurate 50/50 results. If t
 
 ## Database
 
-Three tables:
+Four tables:
 
 **`pulls`** — pull history per user/game. PK: `(discord_id, game, seq_id, is_weapon)`. Populated by `/import`.
 
