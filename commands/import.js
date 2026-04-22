@@ -59,15 +59,9 @@ module.exports = {
       });
 
       if (game.observations?.appendUnknownObservations) {
-        const observations = game.observations.appendUnknownObservations(raw, (msg) => {
+        game.observations.appendUnknownObservations(raw, (msg) => {
           console.log(`[${interaction.user.tag}] ${msg}`);
         });
-
-        for (const observation of observations) {
-          console.log(
-            `[${interaction.user.tag}] Unknown HSR gacha_id=${observation.gachaId} type=${observation.gachaType} first_seen=${observation.firstSeen}`,
-          );
-        }
       }
 
       // Normalize and insert
