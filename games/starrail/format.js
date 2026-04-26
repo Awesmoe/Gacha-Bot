@@ -110,7 +110,10 @@ function buildStatsEmbed(allPulls, bannerMap) {
 
     if (bt.has5050 && s.r6 > 0) {
       fieldValue += `\n50/50: **${s.won}**W / **${s.lost}**L`;
-      if (s.guaranteed > 0) fieldValue += ` / **${s.guaranteed}** guaranteed`;
+      if (s.won + s.lost > 0) {
+        const winrate = (s.won / (s.won + s.lost) * 100).toFixed(2);
+        fieldValue += ` (**${winrate}%**)`;
+      }
       if (analysis.nextIsGuarantee) fieldValue += `\nNext 5★: **guaranteed featured**`;
     }
 
