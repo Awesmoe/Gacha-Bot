@@ -78,6 +78,27 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
+    if (gameId === 'nikki') {
+      const embed = new EmbedBuilder()
+        .setTitle('How to Import — Infinity Nikki')
+        .setColor(0xec4899)
+        .setDescription(
+          '**Step 1:** Log in at **https://pearpal.infoldgames.com** (Infold\'s account portal — same login as the game).\n\n' +
+          '**Step 2:** Open your browser\'s **DevTools console** (F12 → Console tab) and paste this:\n' +
+          '```js\n' +
+          "console.log(JSON.stringify({roleid:[...document.querySelectorAll('div')].find(el=>el.textContent.startsWith('UID:'))?.textContent.replace('UID:','').trim(),token:document.cookie.match(/momoToken=([^;]+)/)?.[1],id:document.cookie.match(/momoNid=([^;]+)/)?.[1]}));\n" +
+          '```\n' +
+          'It prints a JSON object with three fields: `roleid`, `token`, `id`.\n\n' +
+          '**Step 3:** Copy that whole JSON line and run:\n' +
+          '```\n/import game:nikki token:<paste the JSON here>\n```\n' +
+          'First import takes ~3–4 minutes (it walks every banner ever released).\n\n' +
+          '⚠️ These are your **Pearpal session cookies** (expire after ~**7 days**) — treat them like a password. Anyone with them could sign in as you on Pearpal. The bot uses them once per import and never stores them.'
+        )
+        .setFooter({ text: 'All responses are ephemeral — only you can see them' });
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
     return interaction.reply({ content: `Help for ${game.displayName} coming soon`, ephemeral: true });
   },
 };

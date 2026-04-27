@@ -23,5 +23,6 @@ function choices() {
 register('endfield', require('./endfield'));
 register('starrail', require('./starrail'));
 register('genshin', require('./genshin'));
+register('nikki', require('./nikki'));
 
 module.exports = { register, get, list, choices };
