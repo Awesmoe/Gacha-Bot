@@ -1,6 +1,6 @@
 # Gacha Bot
 
-Discord bot for tracking gacha pull history across multiple games. Currently supports **Arknights: Endfield**, **Honkai: Star Rail**, and **Genshin Impact**.
+Discord bot for tracking gacha pull history across multiple games. Currently supports **Infinity Nikki**, **Arknights: Endfield**, **Honkai: Star Rail**, and **Genshin Impact**.
 
 Runs on a Raspberry Pi 4 under PM2. Uses discord.js 14 with slash commands and better-sqlite3 for local SQLite storage.
 
@@ -35,6 +35,7 @@ Runs on a Raspberry Pi 4 under PM2. Uses discord.js 14 with slash commands and b
 | Arknights: Endfield | `endfield` | Uses token from WebView cache |
 | Honkai: Star Rail | `starrail` | Uses authkey from WebView cache |
 | Genshin Impact | `genshin` | Uses authkey from WebView cache |
+| Infinity Nikki | `nikki` | Uses pearpal cookie / momoToken and Nid |
 
 ## Setup
 
