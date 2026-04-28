@@ -6,10 +6,10 @@ Runs on a Raspberry Pi 4 under PM2. Uses discord.js 14 with slash commands and b
 
 ## Features
 
-- Import pull history directly from game APIs (no third-party sites needed)
+- Import pull history directly from game APIs or the publisher's account portal
 - Per-banner pity tracking with soft/hard pity awareness
 - 50/50 win/loss tracking for HSR and Genshin character banners
-- 6★/5★ pull history timeline with pity counts
+- Pull history view per game — 5★/6★ timeline (Endfield, HSR, Genshin) or per-banner outfit-completion (Nikki)
 - Deduplication — re-importing is safe, only new pulls are added
 - All responses are ephemeral — pull data stays private
 - Tokens are never stored — used once during import then discarded
@@ -21,12 +21,12 @@ Runs on a Raspberry Pi 4 under PM2. Uses discord.js 14 with slash commands and b
 | `/help` | Step-by-step instructions for getting your token/authkey and importing |
 | `/import` | Import your pull history from the game API |
 | `/stats` | Pity counters, 50/50 record, pull statistics |
-| `/history` | 5★/6★ timeline with pity and 50/50 results |
+| `/history` | 5★/6★ timeline with pity and 50/50 results (Nikki: per-banner outfit completion) |
 | `/gryph` | (Admin) Manage Endfield banner → character mappings |
 | `/hoyo` | (Admin) Manage HSR/Genshin banner schedule for 50/50 detection |
 | `/delete` | Delete your stored pull data |
 
-`/help` accepts a `game` option and walks you through extracting the token/authkey from your local game cache using a PowerShell one-liner, then shows the exact `/import` command to run. Start here.
+`/help` accepts a `game` option and walks you through getting your credentials — a PowerShell one-liner that pulls the token/authkey from your local game cache (Endfield, HSR, Genshin) or a browser-console snippet that grabs your session cookies from `pearpal.infoldgames.com` (Nikki) — then shows the exact `/import` command to run. Start here.
 
 ## Supported Games
 
@@ -97,12 +97,16 @@ The banner schedule needs to be kept up to date for accurate 50/50 results. If t
 
 ## Database
 
-Four tables:
+Six tables:
 
 **`pulls`** — pull history per user/game. PK: `(discord_id, game, seq_id, is_weapon)`. Populated by `/import`.
 
 **`banners`** — Endfield banner→character mappings. PK: `(game, pool_name)`. Seeded on first run, extended via `/gryph add`.
 
-**`banner_schedule`** — HSR/Genshin banner schedules. Managed via `/hoyo add/list/remove`. Columns: `game`, `banner_type`, `start_date`, `end_date`, `name`, `featured` (JSON array).
+**`banner_schedule`** — HSR/Genshin/Nikki banner schedules. Managed via `/hoyo add/list/remove` for HoYo games; auto-populated from the Pearpal catalog for Nikki. Columns: `game`, `banner_type`, `start_date`, `end_date`, `name`, `featured` (JSON).
 
 **`gacha_id_map`** — HSR gacha_id → featured character mappings. Auto-populated during `/import` for any new gacha_id encountered. Columns: `gacha_id` (PK), `banner_type`, `featured` (JSON array).
+
+**`item_catalog`** — game-agnostic `item_id` → `name`/`rarity`/`slot`/`banner_id` lookup. Used by Nikki to resolve cloth_ids returned by the gacha API. Refreshed at most every 24h from the Pearpal catalog endpoint during `/import`.
+
+**`nikki_lifetime_events`** — per-user lifetime 4★/5★ pull events from Pearpal's `/note/book/info` endpoint. Full-replaced on each `/import`. Powers the lifetime totals shown by `/stats` (overrides the 180-day pull-window data when present).

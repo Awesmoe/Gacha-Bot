@@ -65,9 +65,8 @@ function getOutfits() {
 }
 
 /**
- * Returns a Map<cloth_id, count> — count is needed to detect color-scheme
- * unlocks (Nikki gives the alt color scheme when every cloth piece in an
- * outfit has been pulled at least 2x).
+ * Returns a Map<cloth_id, count> from per-pull data — used for the pulls-based
+ * (180-day) fallback when no lifetime snapshot exists for the user.
  */
 function pulledClothIdCounts(pulls) {
   const counts = new Map();
@@ -86,11 +85,25 @@ function pulledClothIdCounts(pulls) {
 }
 
 /**
+ * Same shape, but built from lifetime events. Each event = one cloth piece
+ * pulled at that rarity. Counts let us detect color-scheme unlocks across the
+ * full lifetime, not just the 180-day window.
+ */
+function lifetimeClothIdCounts(events) {
+  const counts = new Map();
+  for (const e of events) {
+    const id = String(e.item_id);
+    counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  return counts;
+}
+
+/**
  * For pulls in a category, compute per-rarity (pieces, avgPerPiece).
  * avgPerPiece = avg of `pulls_since_last_X + 1` across all events of rarity X
  * on each banner — matches Pearpal's Whim-Log "per piece" metric.
  */
-function computeCategoryStats(pulls) {
+function computeCategoryStatsFromPulls(pulls) {
   const byBanner = new Map();
   for (const p of pulls) {
     if (!byBanner.has(p.pool_id)) byBanner.set(p.pool_id, []);
@@ -121,10 +134,85 @@ function computeCategoryStats(pulls) {
   };
 }
 
-function buildStatsEmbed(allPulls) {
+/**
+ * The lifetime endpoint's gacha_list includes upgrade/evolution events as
+ * extra entries on the same cloth_id (a piece can be summoned at most 2x in
+ * Nikki, so any 3rd+ occurrence is the in-game "upgrade" action firing a new
+ * gacha_list event). To reconstruct real summon counts we sort by
+ * (banner, pool_cnt) and keep only the first 2 occurrences per cloth_id.
+ *
+ * Empirically reproduces Pearpal's Whim-Log "pieces" + "per piece" totals
+ * exactly for limited 5★, limited 4★, and perma 5★. Perma 4★ still under-
+ * counts vs Pearpal's display (cause unknown — likely a display quirk or
+ * undocumented backfill on Pearpal's side).
+ */
+function applyCapAtTwo(events) {
+  const sorted = [...events].sort((a, b) => {
+    if (a.banner_id !== b.banner_id) return a.banner_id < b.banner_id ? -1 : 1;
+    return a.pool_cnt - b.pool_cnt;
+  });
+  const seen = new Map();
+  const out = [];
+  for (const e of sorted) {
+    const cid = String(e.item_id);
+    const n = seen.get(cid) || 0;
+    if (n < 2) {
+      out.push(e);
+      seen.set(cid, n + 1);
+    }
+  }
+  return out;
+}
+
+/**
+ * Per-rarity pieces + avg-per-piece. Uses cap-at-2 events for piece counts and
+ * pulls_to_obtain (so upgrade events don't inflate the piece count or skew the
+ * pity average). totalPulls uses the full event list since pool_cnt indexes
+ * actual pull positions, not just summons.
+ */
+function computeCategoryStatsFromLifetime(events) {
+  const realPulls = applyCapAtTwo(events);
+  const acc = { 5: { sum: 0, count: 0 }, 4: { sum: 0, count: 0 } };
+  for (const e of realPulls) {
+    if (e.rarity === 5 || e.rarity === 4) {
+      acc[e.rarity].sum += e.pulls_to_obtain;
+      acc[e.rarity].count++;
+    }
+  }
+
+  const maxPoolCnt = new Map();
+  for (const e of events) {
+    const cur = maxPoolCnt.get(e.banner_id);
+    if (cur == null || e.pool_cnt > cur) maxPoolCnt.set(e.banner_id, e.pool_cnt);
+  }
+  let totalPulls = 0;
+  for (const v of maxPoolCnt.values()) totalPulls += v + 1;
+
+  return {
+    totalPulls,
+    five: { pieces: acc[5].count, avg: acc[5].count ? acc[5].sum / acc[5].count : 0 },
+    four: { pieces: acc[4].count, avg: acc[4].count ? acc[4].sum / acc[4].count : 0 },
+  };
+}
+
+function countCompleted(outfits, bannerInfo, counts, type, rarity) {
+  let n = 0;
+  for (const o of outfits) {
+    const info = bannerInfo.get(o.bannerId);
+    if (!info || info.type !== type) continue;
+    if (o.rarity !== rarity) continue;
+    if (o.clothIds.length === 0) continue;
+    if (o.clothIds.every(id => (counts.get(id) || 0) >= 1)) n++;
+  }
+  return n;
+}
+
+function buildStatsEmbed(allPulls, _bannerMap, discordId) {
+  const lifetimeEvents = discordId ? db.getNikkiLifetimeEvents(discordId) : [];
+  const useLifetime = lifetimeEvents.length > 0;
+
   const bannerInfo = buildBannerInfo();
   const outfits = getOutfits();
-  const counts = pulledClothIdCounts(allPulls);
 
   const limitedBids = new Set();
   const permBids = new Set();
@@ -133,31 +221,34 @@ function buildStatsEmbed(allPulls) {
     else limitedBids.add(bid);
   }
 
-  const limitedPulls = allPulls.filter(p => limitedBids.has(p.pool_id));
-  const permPulls = allPulls.filter(p => permBids.has(p.pool_id));
-
-  const ls = computeCategoryStats(limitedPulls);
-  const ps = computeCategoryStats(permPulls);
-
-  // Completed limited outfits by rarity (perma intentionally not counted —
-  // not part of Mide's Whim-Log layout).
-  const completed = { 5: 0, 4: 0 };
-  for (const o of outfits) {
-    if (permBids.has(o.bannerId)) continue;
-    if (o.clothIds.length === 0) continue;
-    if (o.clothIds.every(id => (counts.get(id) || 0) >= 1)) {
-      completed[o.rarity] = (completed[o.rarity] || 0) + 1;
-    }
+  let ls, ps, totalPulls, counts;
+  if (useLifetime) {
+    const limitedEvents = lifetimeEvents.filter(e => limitedBids.has(e.banner_id));
+    const permEvents = lifetimeEvents.filter(e => permBids.has(e.banner_id));
+    ls = computeCategoryStatsFromLifetime(limitedEvents);
+    ps = computeCategoryStatsFromLifetime(permEvents);
+    totalPulls = ls.totalPulls + ps.totalPulls;
+    counts = lifetimeClothIdCounts(lifetimeEvents);
+  } else {
+    const limitedPulls = allPulls.filter(p => limitedBids.has(p.pool_id));
+    const permPulls = allPulls.filter(p => permBids.has(p.pool_id));
+    ls = computeCategoryStatsFromPulls(limitedPulls);
+    ps = computeCategoryStatsFromPulls(permPulls);
+    totalPulls = allPulls.length;
+    counts = pulledClothIdCounts(allPulls);
   }
+
+  const completedL5 = countCompleted(outfits, bannerInfo, counts, 'limited', 5);
+  const completedL4 = countCompleted(outfits, bannerInfo, counts, 'limited', 4);
 
   const fmt = n => n.toFixed(1);
   const lines = [];
 
   if (ls.five.pieces > 0) {
-    lines.push(`**Limited 5★** — ${ls.five.pieces} pieces · ${fmt(ls.five.avg)} per piece · ${completed[5]} completed`);
+    lines.push(`**Limited 5★** — ${ls.five.pieces} pieces · ${fmt(ls.five.avg)} per piece · ${completedL5} completed`);
   }
   if (ls.four.pieces > 0) {
-    lines.push(`**Limited 4★** — ${ls.four.pieces} pieces · ${fmt(ls.four.avg)} per piece · ${completed[4]} completed`);
+    lines.push(`**Limited 4★** — ${ls.four.pieces} pieces · ${fmt(ls.four.avg)} per piece · ${completedL4} completed`);
   }
   if (ps.five.pieces > 0) {
     lines.push(`**Permanent 5★** — ${ps.five.pieces} pieces · ${fmt(ps.five.avg)} per piece`);
@@ -166,23 +257,43 @@ function buildStatsEmbed(allPulls) {
     lines.push(`**Permanent 4★** — ${ps.four.pieces} pieces`);
   }
 
+  const footerScope = useLifetime
+    ? `${totalPulls} lifetime pulls`
+    : `${totalPulls} pulls in the last ~180 days`;
+
   const embed = new EmbedBuilder()
     .setTitle('📊 Pull Statistics')
     .setColor(COLOR)
     .setDescription(lines.length ? lines.join('\n') : 'No pulls found.')
-    .setFooter({ text: `${allPulls.length} pulls in the last ~180 days · Infinity Nikki` });
+    .setFooter({ text: `${footerScope} · Infinity Nikki` });
 
   return [embed];
 }
 
-function buildHistoryEmbed(allPulls) {
+function buildHistoryEmbed(allPulls, _bannerMap, discordId) {
+  const lifetimeEvents = discordId ? db.getNikkiLifetimeEvents(discordId) : [];
+  const useLifetime = lifetimeEvents.length > 0;
+
   const bannerInfo = buildBannerInfo();
   const outfits = getOutfits();
-  const counts = pulledClothIdCounts(allPulls);
 
+  // Per-banner pull totals + cloth_id counts come from whichever source is
+  // available. Lifetime is preferred for accuracy; pulls is the 180-day fallback.
   const pullsPerBanner = new Map();
-  for (const p of allPulls) {
-    pullsPerBanner.set(p.pool_id, (pullsPerBanner.get(p.pool_id) || 0) + 1);
+  let counts;
+  if (useLifetime) {
+    const maxPoolCnt = new Map();
+    for (const e of lifetimeEvents) {
+      const cur = maxPoolCnt.get(e.banner_id);
+      if (cur == null || e.pool_cnt > cur) maxPoolCnt.set(e.banner_id, e.pool_cnt);
+    }
+    for (const [bid, mx] of maxPoolCnt.entries()) pullsPerBanner.set(bid, mx + 1);
+    counts = lifetimeClothIdCounts(lifetimeEvents);
+  } else {
+    for (const p of allPulls) {
+      pullsPerBanner.set(p.pool_id, (pullsPerBanner.get(p.pool_id) || 0) + 1);
+    }
+    counts = pulledClothIdCounts(allPulls);
   }
 
   const outfitsByBanner = new Map();
@@ -230,9 +341,11 @@ function buildHistoryEmbed(allPulls) {
     .setTitle('📜 Per-Banner History')
     .setColor(COLOR);
 
+  const footerScope = useLifetime ? 'lifetime' : 'last ~180 days';
+
   if (sections.length === 0) {
     embed.setDescription('No pulls found.');
-    embed.setFooter({ text: 'Infinity Nikki' });
+    embed.setFooter({ text: `Infinity Nikki · ${footerScope}` });
     return [embed];
   }
 
@@ -253,19 +366,26 @@ function buildHistoryEmbed(allPulls) {
   }
 
   embed.setDescription(body);
-  embed.setFooter({ text: `${bannersWithPulls.length} banners pulled on · Infinity Nikki` });
+  embed.setFooter({ text: `${bannersWithPulls.length} banners pulled on · Infinity Nikki · ${footerScope}` });
   return [embed];
 }
 
 function buildImportEmbed(inserted, skipped, totalByType) {
-  const total = Object.values(totalByType).reduce((a, b) => a + (b || 0), 0);
+  const pullCount = totalByType.pulls || 0;
+  const lifetimeCount = totalByType.lifetimeEvents || 0;
+
+  const desc = [
+    `**${inserted}** new pulls imported, **${skipped}** duplicates skipped`,
+    `Total fetched: **${pullCount}** pulls (last ~180 days)`,
+  ];
+  if (lifetimeCount > 0) {
+    desc.push(`Lifetime snapshot refreshed: **${lifetimeCount}** 4★/5★ events`);
+  }
+
   return new EmbedBuilder()
     .setTitle('Import Complete')
     .setColor(COLOR)
-    .setDescription(
-      `**${inserted}** new pulls imported, **${skipped}** duplicates skipped\n` +
-      `Total fetched: **${total}**`
-    )
+    .setDescription(desc.join('\n'))
     .setFooter({ text: 'Use /stats and /history to see your data · Infinity Nikki' });
 }
 

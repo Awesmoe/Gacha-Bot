@@ -1,8 +1,11 @@
+const snappy = require('snappyjs');
 const db = require('../../lib/db');
 const { refreshCatalog } = require('./refresh-catalog');
 
 const VERIFY_URL = 'https://x6en-clickhouse.infoldgames.com/v1/tlog/verify';
 const QUERY_URL  = 'https://x6en-clickhouse.infoldgames.com/v1/tlog/query';
+const LIFETIME_URL = 'https://pearpal-api.infoldgames.com/v1/strategy/user/note/book/info';
+const CLIENT_ID = 1116;
 const DELAY = 500;
 const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -106,7 +109,109 @@ async function fetchAllPulls(rawToken, _serverId, onProgress) {
   }
 
   log(`Total: ${allPulls.length} pulls.`);
-  return { pulls: allPulls };
+
+  log('Fetching lifetime totals...');
+  const lifetimeEvents = await fetchLifetimeEvents(cookie);
+  log(`Lifetime: ${lifetimeEvents.length} 4★/5★ events.`);
+
+  return { pulls: allPulls, lifetimeEvents };
+}
+
+/**
+ * Fetch lifetime 4★/5★ event aggregates from Pearpal's note/book/info endpoint.
+ * Response is Snappy-compressed JSON: Record<bannerId, PearpalTrackerItem[]>.
+ * Each item has card_pool_id, pool_cnt, result (cloth_id), times_from_last_*_stars, rarity.
+ * 3★ events are not included. Items only appear after 4★/5★ pulls; pool_cnt is the
+ * global pull index regardless of rarity.
+ */
+async function fetchLifetimeEvents(cookie) {
+  const res = await fetch(LIFETIME_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: CLIENT_ID,
+      token: cookie.token,
+      openid: cookie.id,
+    }),
+  });
+  const buf = await res.arrayBuffer();
+
+  // Auth/server errors come back as plain JSON, not Snappy. Try snappy first; if
+  // that throws, parse buf as JSON to surface the actual error.
+  let json;
+  try {
+    const decoded = snappy.uncompress(new Uint8Array(buf));
+    json = JSON.parse(new TextDecoder().decode(decoded));
+  } catch (snappyErr) {
+    const text = new TextDecoder().decode(buf);
+    try {
+      const errJson = JSON.parse(text);
+      throw new Error(`Lifetime fetch failed: ${errJson.info || errJson.message || text.slice(0, 200)}`);
+    } catch (parseErr) {
+      if (parseErr.message.startsWith('Lifetime fetch failed:')) throw parseErr;
+      throw new Error(`Lifetime fetch returned ${buf.byteLength}b non-snappy non-JSON: ${text.slice(0, 100)}`);
+    }
+  }
+
+  // Response shape: { flag, info_from_self, info_from_gm }.
+  // Each is a Record<bannerId, PearpalTrackerItem[]>. We ingest both and tag
+  // them so we can decide downstream whether to include gm-granted events.
+  const sources = [];
+  if (json && typeof json === 'object') {
+    if (json.info_from_self && typeof json.info_from_self === 'object') {
+      sources.push(['self', json.info_from_self]);
+    }
+    if (json.info_from_gm && typeof json.info_from_gm === 'object') {
+      sources.push(['gm', json.info_from_gm]);
+    }
+    // Older/alternate shapes — fall back to the raw map if neither key present.
+    if (sources.length === 0 && !json.info_from_self && !json.info_from_gm) {
+      const candidate = (json.data && typeof json.data === 'object') ? json.data : json;
+      sources.push(['self', candidate]);
+    }
+  }
+
+  // Walk every array we find under each source (the relevant data lives in
+  // info_from_self.gacha_list — every other array is profile/state data with
+  // no rarity field, which our filter below skips).
+  const events = [];
+  for (const [source, map] of sources) {
+    for (const [outerKey, items] of Object.entries(map || {})) {
+      if (!Array.isArray(items)) continue;
+      for (const it of items) {
+        if (!it || typeof it !== 'object') continue;
+        const rarity = parseInt(it.rarity, 10);
+        if (rarity !== 4 && rarity !== 5) continue;
+        const pulls_to_obtain = rarity === 5
+          ? (it.times_from_last_five_stars ?? 0) + 1
+          : (it.times_from_last_four_stars ?? 0) + 1;
+        // Each event carries its own card_pool_id; the outer key (gacha_list)
+        // is a category name, not a banner id.
+        const bannerId = it.card_pool_id != null
+          ? String(it.card_pool_id)
+          : String(outerKey);
+        events.push({
+          banner_id: bannerId,
+          pool_cnt: it.pool_cnt ?? 0,
+          item_id: String(it.result),
+          rarity,
+          pulls_to_obtain,
+          source,
+        });
+      }
+    }
+  }
+  return events;
+}
+
+/**
+ * Hook called by /import after the main pulls are inserted. Persists the lifetime
+ * snapshot (full replace, since the endpoint returns the complete list each time).
+ */
+function persistExtras(discordId, raw) {
+  if (Array.isArray(raw.lifetimeEvents)) {
+    db.replaceNikkiLifetimeEvents(discordId, raw.lifetimeEvents);
+  }
 }
 
 /**
@@ -169,4 +274,4 @@ function normalizePulls(raw) {
   return out;
 }
 
-module.exports = { fetchAllPulls, normalizePulls };
+module.exports = { fetchAllPulls, normalizePulls, persistExtras };

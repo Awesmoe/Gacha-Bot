@@ -35,7 +35,7 @@ module.exports = {
       bannerMap[b.pool_name] = b.featured_item;
     }
 
-    const embeds = game.format.buildHistoryEmbed(allPulls, bannerMap);
+    const embeds = game.format.buildHistoryEmbed(allPulls, bannerMap, interaction.user.id);
     return interaction.reply({ embeds, ephemeral: true });
   },
 };
