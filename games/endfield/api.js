@@ -25,7 +25,7 @@ async function fetchEndpoint(endpoint, token, serverId, poolType) {
     if (poolType) url += `&pool_type=${poolType}`;
     if (seq !== 0) url += `&seq_id=${seq}`;
 
-    console.log(`[API] ${endpoint} seq=${seq} url_length=${url.length} token_start=${token.substring(0, 20)}`);
+    console.log(`[API] ${endpoint} seq=${seq} url_length=${url.length}`);
 
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0' },

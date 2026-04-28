@@ -111,10 +111,10 @@ async function fetchAllPulls(rawToken, _serverId, onProgress) {
   log(`Total: ${allPulls.length} pulls.`);
 
   log('Fetching lifetime totals...');
-  const lifetimeEvents = await fetchLifetimeEvents(cookie);
-  log(`Lifetime: ${lifetimeEvents.length} 4★/5★ events.`);
+  const { events: lifetimeEvents, summary: lifetimeSummary } = await fetchLifetimeEvents(cookie);
+  log(`Lifetime: ${lifetimeEvents.length} 4★/5★ events; ${lifetimeSummary.periodic_draw_num}+${lifetimeSummary.permanent_draw_num} pulls.`);
 
-  return { pulls: allPulls, lifetimeEvents };
+  return { pulls: allPulls, lifetimeEvents, lifetimeSummary };
 }
 
 /**
@@ -201,7 +201,16 @@ async function fetchLifetimeEvents(cookie) {
       }
     }
   }
-  return events;
+
+  // Lifetime pull totals — limited (periodic) + permanent. These two ints in
+  // info_from_gm match Pearpal's displayed totals exactly, including the 3★
+  // tail after the last 4★/5★ that's invisible to event-based math.
+  const summary = {
+    periodic_draw_num: json?.info_from_gm?.periodic_draw_num ?? 0,
+    permanent_draw_num: json?.info_from_gm?.permanent_draw_num ?? 0,
+  };
+
+  return { events, summary };
 }
 
 /**
@@ -211,6 +220,9 @@ async function fetchLifetimeEvents(cookie) {
 function persistExtras(discordId, raw) {
   if (Array.isArray(raw.lifetimeEvents)) {
     db.replaceNikkiLifetimeEvents(discordId, raw.lifetimeEvents);
+  }
+  if (raw.lifetimeSummary && typeof raw.lifetimeSummary === 'object') {
+    db.replaceNikkiLifetimeSummary(discordId, raw.lifetimeSummary);
   }
 }
 

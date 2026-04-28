@@ -5,14 +5,23 @@ const db = require('../../lib/db');
 
 const RESULT_LABEL = { won: '✅ Won', lost: '❌ Lost', guaranteed: '🔒 Guaranteed', unknown: '❓' };
 
+// gacha_ts is stored as the UTC ms epoch of the server-time wall clock; +8h
+// recovers the server-side calendar date regardless of the host's local TZ.
+function getServerDateKey(gachaTs) {
+  return new Date(Number(gachaTs) + 8 * 3600000).toISOString().slice(0, 10);
+}
+
+function formatServerDate(gachaTs) {
+  return new Date(Number(gachaTs) + 8 * 3600000)
+    .toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+}
+
 function getFeaturedForPullFromSchedule(pull, schedule) {
-  const utcPlus8 = new Date(Number(pull.gacha_ts) + 8 * 3600000);
-  const pullDate = utcPlus8.toISOString().slice(0, 10);
+  const pullDate = getServerDateKey(pull.gacha_ts);
   const allFeatured = new Set();
 
   for (const banner of schedule) {
-    if (!banner.end) continue;
-    if (pullDate >= banner.start && pullDate < banner.end) {
+    if (pullDate >= banner.start && (!banner.end || pullDate < banner.end)) {
       for (const item of banner.featured) {
         allFeatured.add(item);
       }
@@ -119,8 +128,7 @@ function buildHistoryEmbed(allPulls, bannerMap) {
 
     const recent = [...analysis.sixStars].reverse().slice(0, 20);
     const lines = recent.map(p => {
-      const date = new Date(Number(p.gacha_ts));
-      const ds = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const ds = formatServerDate(p.gacha_ts);
       const result = p.result ? ` ${RESULT_LABEL[p.result]}` : '';
       return `**${p.item_name}** — #${p._pity} pity${result} (${ds})`;
     });

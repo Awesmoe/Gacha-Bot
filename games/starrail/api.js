@@ -77,6 +77,13 @@ async function fetchAllPulls(authkey, _serverId, onProgress) {
  * HSR response items look like:
  * { uid, gacha_type, item_id, count, time, name, lang, item_type, rank_type, id }
  */
+// HoYo `time` is server wall-clock (UTC+8). Parsing without an explicit offset
+// would interpret it as the host's local timezone, which on a Pi running UTC
+// shifts pulls by 8h and misclassifies banner-boundary 50/50s.
+function parseServerTimeToEpochMs(time) {
+  return Date.parse(time.replace(' ', 'T') + '+08:00');
+}
+
 function normalizePulls(raw) {
   const pulls = [];
 
@@ -92,7 +99,7 @@ function normalizePulls(raw) {
         pool_name: bt.label, // we don't get banner-specific names from the API
         item_name: r.name,
         rarity: parseInt(r.rank_type, 10),
-        gacha_ts: String(new Date(r.time).getTime()), // convert datetime to timestamp
+        gacha_ts: String(parseServerTimeToEpochMs(r.time)),
         extra_json: {
           uid: r.uid,
           item_type: r.item_type,

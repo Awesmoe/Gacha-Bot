@@ -167,8 +167,7 @@ function applyCapAtTwo(events) {
 /**
  * Per-rarity pieces + avg-per-piece. Uses cap-at-2 events for piece counts and
  * pulls_to_obtain (so upgrade events don't inflate the piece count or skew the
- * pity average). totalPulls uses the full event list since pool_cnt indexes
- * actual pull positions, not just summons.
+ * pity average).
  */
 function computeCategoryStatsFromLifetime(events) {
   const realPulls = applyCapAtTwo(events);
@@ -179,17 +178,7 @@ function computeCategoryStatsFromLifetime(events) {
       acc[e.rarity].count++;
     }
   }
-
-  const maxPoolCnt = new Map();
-  for (const e of events) {
-    const cur = maxPoolCnt.get(e.banner_id);
-    if (cur == null || e.pool_cnt > cur) maxPoolCnt.set(e.banner_id, e.pool_cnt);
-  }
-  let totalPulls = 0;
-  for (const v of maxPoolCnt.values()) totalPulls += v + 1;
-
   return {
-    totalPulls,
     five: { pieces: acc[5].count, avg: acc[5].count ? acc[5].sum / acc[5].count : 0 },
     four: { pieces: acc[4].count, avg: acc[4].count ? acc[4].sum / acc[4].count : 0 },
   };
@@ -227,7 +216,8 @@ function buildStatsEmbed(allPulls, _bannerMap, discordId) {
     const permEvents = lifetimeEvents.filter(e => permBids.has(e.banner_id));
     ls = computeCategoryStatsFromLifetime(limitedEvents);
     ps = computeCategoryStatsFromLifetime(permEvents);
-    totalPulls = ls.totalPulls + ps.totalPulls;
+    const summary = db.getNikkiLifetimeSummary(discordId);
+    totalPulls = (summary?.periodic_draw_num ?? 0) + (summary?.permanent_draw_num ?? 0);
     counts = lifetimeClothIdCounts(lifetimeEvents);
   } else {
     const limitedPulls = allPulls.filter(p => limitedBids.has(p.pool_id));

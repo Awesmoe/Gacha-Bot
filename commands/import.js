@@ -37,8 +37,6 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     console.log(`[${interaction.user.tag}] Import requested for ${gameId}`);
-    console.log(`[${interaction.user.tag}] Credential length: ${token.length}`);
-    console.log(`[${interaction.user.tag}] Has %: ${token.includes('%')}`);
     console.log(`[${interaction.user.tag}] Server ID: ${serverId}`);
 
     try {

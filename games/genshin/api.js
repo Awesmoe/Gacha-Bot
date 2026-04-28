@@ -83,6 +83,13 @@ async function fetchAllPulls(authkey, _serverId, onProgress) {
   return result;
 }
 
+// HoYo `time` is server wall-clock (UTC+8). Parsing without an explicit offset
+// would interpret it as the host's local timezone, which on a Pi running UTC
+// shifts pulls by 8h and misclassifies banner-boundary 50/50s.
+function parseServerTimeToEpochMs(time) {
+  return Date.parse(time.replace(' ', 'T') + '+08:00');
+}
+
 /**
  * Normalize raw Genshin API data into the shared DB format.
  * Genshin items: { uid, gacha_type, item_id, count, time, name, lang, item_type, rank_type, id }
@@ -102,7 +109,7 @@ function normalizePulls(raw) {
         pool_name: bt.label,
         item_name: r.name,
         rarity: parseInt(r.rank_type, 10),
-        gacha_ts: String(new Date(r.time).getTime()),
+        gacha_ts: String(parseServerTimeToEpochMs(r.time)),
         extra_json: {
           uid: r.uid,
           item_type: r.item_type,
