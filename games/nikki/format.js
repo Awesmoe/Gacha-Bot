@@ -210,13 +210,13 @@ function buildStatsEmbed(allPulls, _bannerMap, discordId) {
     else limitedBids.add(bid);
   }
 
-  let ls, ps, totalPulls, counts;
+  let ls, ps, totalPulls, counts, summary;
   if (useLifetime) {
     const limitedEvents = lifetimeEvents.filter(e => limitedBids.has(e.banner_id));
     const permEvents = lifetimeEvents.filter(e => permBids.has(e.banner_id));
     ls = computeCategoryStatsFromLifetime(limitedEvents);
     ps = computeCategoryStatsFromLifetime(permEvents);
-    const summary = db.getNikkiLifetimeSummary(discordId);
+    summary = db.getNikkiLifetimeSummary(discordId);
     totalPulls = (summary?.periodic_draw_num ?? 0) + (summary?.permanent_draw_num ?? 0);
     counts = lifetimeClothIdCounts(lifetimeEvents);
   } else {
@@ -232,7 +232,18 @@ function buildStatsEmbed(allPulls, _bannerMap, discordId) {
   const completedL4 = countCompleted(outfits, bannerInfo, counts, 'limited', 4);
 
   const fmt = n => n.toFixed(1);
+  const num = n => n.toLocaleString('en-US');
   const lines = [];
+
+  if (summary) {
+    const hours = Math.round((summary.total_play_time || 0) / 3600);
+    lines.push(`**${num(summary.login_days || 0)}** days logged in · **${num(hours)}h** played`);
+    lines.push(
+      `**${num(totalPulls)}** total resonances · Limited **${num(summary.periodic_draw_num || 0)}** · Permanent **${num(summary.permanent_draw_num || 0)}**`
+    );
+    lines.push(`**${num(summary.cloth_num || 0)}** clothes · **${num(summary.momo_num || 0)}** Momo outfits`);
+    lines.push('');
+  }
 
   if (ls.five.pieces > 0) {
     lines.push(`**Limited 5★** — ${ls.five.pieces} pieces · ${fmt(ls.five.avg)} per piece · ${completedL5} completed`);
@@ -248,14 +259,14 @@ function buildStatsEmbed(allPulls, _bannerMap, discordId) {
   }
 
   const footerScope = useLifetime
-    ? `${totalPulls} lifetime pulls`
+    ? 'lifetime'
     : `${totalPulls} pulls in the last ~180 days`;
 
   const embed = new EmbedBuilder()
     .setTitle('📊 Pull Statistics')
     .setColor(COLOR)
     .setDescription(lines.length ? lines.join('\n') : 'No pulls found.')
-    .setFooter({ text: `${footerScope} · Infinity Nikki` });
+    .setFooter({ text: `Infinity Nikki · ${footerScope}` });
 
   return [embed];
 }

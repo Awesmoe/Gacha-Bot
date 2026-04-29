@@ -205,9 +205,15 @@ async function fetchLifetimeEvents(cookie) {
   // Lifetime pull totals — limited (periodic) + permanent. These two ints in
   // info_from_gm match Pearpal's displayed totals exactly, including the 3★
   // tail after the last 4★/5★ that's invisible to event-based math.
+  // Plus collection counters (cloth_num, momo_num) and self-reported playtime
+  // (login_days, total_play_time in seconds) used for the /stats header.
   const summary = {
     periodic_draw_num: json?.info_from_gm?.periodic_draw_num ?? 0,
     permanent_draw_num: json?.info_from_gm?.permanent_draw_num ?? 0,
+    cloth_num: json?.info_from_gm?.cloth_num ?? 0,
+    momo_num: json?.info_from_gm?.momo_num ?? 0,
+    login_days: json?.info_from_self?.login_days ?? 0,
+    total_play_time: json?.info_from_self?.total_play_time ?? 0,
   };
 
   return { events, summary };

@@ -10,3 +10,5 @@ gacha.db
 *.txt
 CLAUDE.md
 nikki_lifetime_dump.json
+nikki-bookinfo-*.json
+scripts/nikki-bookinfo-*.json
