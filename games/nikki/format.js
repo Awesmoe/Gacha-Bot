@@ -241,7 +241,7 @@ function buildStatsEmbed(allPulls, _bannerMap, discordId) {
     lines.push(
       `**${num(totalPulls)}** total resonances · Limited **${num(summary.periodic_draw_num || 0)}** · Permanent **${num(summary.permanent_draw_num || 0)}**`
     );
-    lines.push(`**${num(summary.cloth_num || 0)}** clothes · **${num(summary.momo_num || 0)}** Momo outfits`);
+    lines.push(`**${num(summary.cloth_num || 0)}** clothes · **${num(summary.suits_num || 0)}** outfits · **${num(summary.momo_num || 0)}** Momo outfits`);
     lines.push('');
   }
 

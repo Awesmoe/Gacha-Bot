@@ -212,6 +212,7 @@ async function fetchLifetimeEvents(cookie) {
     permanent_draw_num: json?.info_from_gm?.permanent_draw_num ?? 0,
     cloth_num: json?.info_from_gm?.cloth_num ?? 0,
     momo_num: json?.info_from_gm?.momo_num ?? 0,
+    suits_num: Array.isArray(json?.info_from_gm?.suits) ? json.info_from_gm.suits.length : 0,
     login_days: json?.info_from_self?.login_days ?? 0,
     total_play_time: json?.info_from_self?.total_play_time ?? 0,
   };
