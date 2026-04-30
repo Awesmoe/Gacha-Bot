@@ -97,7 +97,7 @@ The banner schedule needs to be kept up to date for accurate 50/50 results. If t
 
 ## Database
 
-Six tables:
+Eight tables:
 
 **`pulls`** — pull history per user/game. PK: `(discord_id, game, seq_id, is_weapon)`. Populated by `/import`.
 
@@ -110,3 +110,7 @@ Six tables:
 **`item_catalog`** — game-agnostic `item_id` → `name`/`rarity`/`slot`/`banner_id` lookup. Used by Nikki to resolve cloth_ids returned by the gacha API. Refreshed at most every 24h from the Pearpal catalog endpoint during `/import`.
 
 **`nikki_lifetime_events`** — per-user lifetime 4★/5★ pull events from Pearpal's `/note/book/info` endpoint. Full-replaced on each `/import`. Powers the lifetime totals shown by `/stats` (overrides the 180-day pull-window data when present).
+
+**`nikki_lifetime_summary`** — per-user lifetime totals from the same Pearpal endpoint: limited/permanent pull counts, cloth/momo/suit collection counts, login days, total playtime. Full-replaced on each `/import`. Drives the `/stats` profile header. PK: `(discord_id)`.
+
+**`imports`** — last-import timestamp per user per game. Updated by `/import` and surfaced as the "last updated" footer on `/stats`, `/history`, and the import-confirmation embed. PK: `(discord_id, game)`.
