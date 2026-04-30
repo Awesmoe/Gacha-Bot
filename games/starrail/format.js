@@ -1,39 +1,16 @@
 const { EmbedBuilder } = require('discord.js');
-const { analyzePulls } = require('../../lib/analytics');
+const { analyzePulls, groupPullsByType } = require('../../lib/analytics');
+const { formatServerDate, featuredForPullOnSchedule } = require('../../lib/time');
 const config = require('./config');
 const db = require('../../lib/db');
 
 const RESULT_LABEL = { won: '✅ Won', lost: '❌ Lost', guaranteed: '🔒 Guaranteed', unknown: '❓' };
 
-// gacha_ts is stored as the UTC ms epoch of the server-time wall clock; +8h
-// recovers the server-side calendar date regardless of the host's local TZ.
-function getServerDateKey(gachaTs) {
-  return new Date(Number(gachaTs) + 8 * 3600000).toISOString().slice(0, 10);
-}
-
-function formatServerDate(gachaTs) {
-  return new Date(Number(gachaTs) + 8 * 3600000)
-    .toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
-}
-
-function groupPullsByType(allPulls) {
-  const grouped = {};
-  for (const key of Object.keys(config.bannerTypes)) grouped[key] = [];
-  for (const p of allPulls) {
-    const type = config.classifyPull(p);
-    if (!grouped[type]) grouped[type] = [];
-    grouped[type].push(p);
-  }
-  return grouped;
-}
-
 function getStoredGachaId(pull) {
   if (!pull.extra_json) return null;
   if (typeof pull.extra_json === 'object') return pull.extra_json.gacha_id || null;
-
   try {
-    const extra = JSON.parse(pull.extra_json);
-    return extra?.gacha_id || null;
+    return JSON.parse(pull.extra_json)?.gacha_id || null;
   } catch {
     return null;
   }
@@ -42,44 +19,23 @@ function getStoredGachaId(pull) {
 function getFeaturedFromGachaId(pull, expectedType) {
   const gachaId = getStoredGachaId(pull);
   if (!gachaId) return null;
-
   const entry = db.getGachaIdMap(gachaId);
   if (!entry || entry.banner_type !== expectedType) return null;
-
   return entry.featured.length > 0 ? entry.featured : null;
-}
-
-function getFeaturedForPullFromSchedule(pull, schedule) {
-  const pullDate = getServerDateKey(pull.gacha_ts);
-  const allFeatured = new Set();
-
-  for (const banner of schedule) {
-    if (pullDate >= banner.start && (!banner.end || pullDate < banner.end)) {
-      for (const character of banner.featured) {
-        allFeatured.add(character);
-      }
-    }
-  }
-
-  return allFeatured.size > 0 ? [...allFeatured] : null;
 }
 
 function getFeaturedCharactersForPull(pull) {
   return getFeaturedFromGachaId(pull, 'character')
-    || getFeaturedForPullFromSchedule(pull, db.getSchedule('starrail', 'character'));
+    || featuredForPullOnSchedule(pull, db.getSchedule('starrail', 'character'));
 }
 
 function getFeaturedLightConesForPull(pull) {
   return getFeaturedFromGachaId(pull, 'lightcone')
-    || getFeaturedForPullFromSchedule(pull, db.getSchedule('starrail', 'lightcone'));
+    || featuredForPullOnSchedule(pull, db.getSchedule('starrail', 'lightcone'));
 }
 
-/**
- * Build stats embeds for HSR.
- * HSR uses 5★ as max rarity (not 6★ like Endfield).
- */
 function buildStatsEmbed(allPulls, bannerMap, discordId) {
-  const grouped = groupPullsByType(allPulls);
+  const grouped = groupPullsByType(allPulls, config);
 
   const total = allPulls.length;
   const overview = new EmbedBuilder()
@@ -88,8 +44,7 @@ function buildStatsEmbed(allPulls, bannerMap, discordId) {
     .setDescription(`**${total}** total warps across all banners`)
     .setFooter({ text: 'Honkai: Star Rail' });
 
-  const lastImport = discordId ? db.getLastImport(discordId, 'starrail') : null;
-  if (lastImport) overview.setTimestamp(lastImport);
+  db.applyLastImportTimestamp(overview, discordId, 'starrail');
 
   for (const [key, bt] of Object.entries(config.bannerTypes)) {
     const pulls = grouped[key];
@@ -135,11 +90,8 @@ function buildStatsEmbed(allPulls, bannerMap, discordId) {
   return [overview];
 }
 
-/**
- * Build 5★ history embeds.
- */
 function buildHistoryEmbed(allPulls, bannerMap) {
-  const grouped = groupPullsByType(allPulls);
+  const grouped = groupPullsByType(allPulls, config);
 
   const embeds = [];
 

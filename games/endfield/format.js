@@ -1,29 +1,12 @@
 const { EmbedBuilder } = require('discord.js');
-const { analyzePulls } = require('../../lib/analytics');
+const { analyzePulls, groupPullsByType } = require('../../lib/analytics');
 const db = require('../../lib/db');
 const config = require('./config');
 
-const RARITY_EMOJI = { 6: '🟡', 5: '🟣', 4: '🔵', 3: '⚪' };
 const RESULT_LABEL = { won: '✅ Won', lost: '❌ Lost', guarantee: '🔒 Guarantee', guaranteed: '🔒 Guaranteed', unknown: '❓ Unknown' };
 
-function groupPullsByType(allPulls) {
-  const grouped = {};
-  for (const key of Object.keys(config.bannerTypes)) grouped[key] = [];
-  for (const p of allPulls) {
-    const type = config.classifyPull(p);
-    if (!grouped[type]) grouped[type] = [];
-    grouped[type].push(p);
-  }
-  return grouped;
-}
-
-/**
- * Build a stats embed for a user's pulls.
- * @param {Array} allPulls - all DB rows for this user+game
- * @param {Object} bannerMap - poolName → featured char
- */
 function buildStatsEmbed(allPulls, bannerMap, discordId) {
-  const grouped = groupPullsByType(allPulls);
+  const grouped = groupPullsByType(allPulls, config);
 
   const embeds = [];
 
@@ -35,8 +18,7 @@ function buildStatsEmbed(allPulls, bannerMap, discordId) {
     .setDescription(`**${total}** total pulls across all banners`)
     .setFooter({ text: 'Arknights: Endfield' });
 
-  const lastImport = discordId ? db.getLastImport(discordId, 'endfield') : null;
-  if (lastImport) overview.setTimestamp(lastImport);
+  db.applyLastImportTimestamp(overview, discordId, 'endfield');
 
   // Per banner type
   for (const [key, bt] of Object.entries(config.bannerTypes)) {
@@ -75,11 +57,8 @@ function buildStatsEmbed(allPulls, bannerMap, discordId) {
   return embeds;
 }
 
-/**
- * Build a 6★ history embed.
- */
 function buildHistoryEmbed(allPulls, bannerMap) {
-  const grouped = groupPullsByType(allPulls);
+  const grouped = groupPullsByType(allPulls, config);
 
   const embeds = [];
 
@@ -130,9 +109,6 @@ function buildHistoryEmbed(allPulls, bannerMap) {
   return embeds;
 }
 
-/**
- * Build an import summary embed.
- */
 function buildImportEmbed(inserted, skipped, totalByType) {
   return new EmbedBuilder()
     .setTitle('✅ Import Complete')

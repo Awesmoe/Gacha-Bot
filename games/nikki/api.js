@@ -1,11 +1,11 @@
 const snappy = require('snappyjs');
 const db = require('../../lib/db');
 const { refreshCatalog } = require('./refresh-catalog');
+const config = require('./config');
 
 const VERIFY_URL = 'https://x6en-clickhouse.infoldgames.com/v1/tlog/verify';
 const QUERY_URL  = 'https://x6en-clickhouse.infoldgames.com/v1/tlog/query';
 const LIFETIME_URL = 'https://pearpal-api.infoldgames.com/v1/strategy/user/note/book/info';
-const CLIENT_ID = 1116;
 const DELAY = 500;
 const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -129,7 +129,7 @@ async function fetchLifetimeEvents(cookie) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      client_id: CLIENT_ID,
+      client_id: config.pearpalClientId,
       token: cookie.token,
       openid: cookie.id,
     }),
@@ -233,21 +233,13 @@ function persistExtras(discordId, raw) {
   }
 }
 
-/**
- * Convert raw API records into our DB pull shape.
- * Resolves item_id -> name + rarity via item_catalog. Items not in the catalog
- * are 3★ (catalog only contains 4★ and 5★).
- *
- * seq_id format: `${banner_id}-${ts}-${item_id}-${idx}` where idx is the
- * position of this item_id within a same-timestamp group on this banner.
- * Including item_id in the key means re-feeding the same batch produces the
- * same seq_ids and INSERT OR IGNORE catches it.
- */
+// seq_id includes idx so same-(item,ts) duplicates within a banner each get a
+// distinct key. Re-importing the same data produces identical seq_ids, so
+// INSERT OR IGNORE makes it idempotent.
 function normalizePulls(raw) {
   const out = [];
 
-  // Build banner_id -> banner_name map from the schedule (covers 3★ pulls
-  // where the item itself isn't in the catalog).
+  const catalog = db.getCatalogMap('nikki');
   const schedule = db.getSchedule('nikki', 'banner');
   const bannerNames = new Map();
   for (const s of schedule) {
@@ -255,7 +247,6 @@ function normalizePulls(raw) {
     if (bid && s.name) bannerNames.set(bid, s.name);
   }
 
-  // Group by banner so we can compute idx-within-(item,ts) per banner.
   const byBanner = new Map();
   for (const p of raw.pulls || []) {
     if (!byBanner.has(p.banner_id)) byBanner.set(p.banner_id, []);
@@ -269,12 +260,12 @@ function normalizePulls(raw) {
       const idx = itemTsCount.get(key) || 0;
       itemTsCount.set(key, idx + 1);
 
-      const cat = db.getCatalogItem('nikki', p.item_id);
+      const cat = catalog.get(String(p.item_id));
       const item_name = cat?.name || `3★ Item ${p.item_id}`;
-      const rarity = cat?.rarity || 3; // catalog only holds 4★/5★; rest is 3★
+      const rarity = cat?.rarity || 3;
       const banner_name = bannerNames.get(bannerId) || `Banner ${bannerId}`;
 
-      // Convert "2026-04-27 06:32:41" -> ms epoch (UTC+8 server time).
+      // "2026-04-27 06:32:41" is server time (UTC+8); preserve that as ms epoch.
       const ts_ms = Date.parse(p.ts.replace(' ', 'T') + '+08:00');
 
       out.push({

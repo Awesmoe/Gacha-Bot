@@ -1,7 +1,7 @@
 const db = require('../../lib/db');
+const config = require('./config');
 
 const CATALOG_URL = 'https://pearpal-api.infoldgames.com/v1/strategy/main/suit/list';
-const CLIENT_ID = 1116;
 
 function pickEn(multilang) {
   if (!Array.isArray(multilang)) return null;
@@ -23,7 +23,7 @@ async function refreshCatalog(cookie) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      client_id: CLIENT_ID,
+      client_id: config.pearpalClientId,
       token: cookie.token,
       openid: cookie.id,
     }),

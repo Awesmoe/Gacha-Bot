@@ -8,4 +8,5 @@ module.exports = {
   classifyPull(_pull) {
     return 'unknown';
   },
+  pearpalClientId: 1116,
 };

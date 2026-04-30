@@ -4,24 +4,28 @@ const db = require('../../lib/db');
 const COLOR = 0xec4899;
 const PERMANENT_BANNER_ID = '1';
 
-/**
- * Build a banner_id -> { name, rarity, type, isActive, startDate } map from
- * banner_schedule. The catalog returns one row per (banner, outfit), so a
- * banner with both a 5★ and a 4★ outfit yields two rows; we collapse to one
- * entry per banner_id, taking max rarity, OR'd active flag, and earliest start.
- */
-function buildBannerInfo() {
+// Single pass over banner_schedule that produces both:
+//   bannerInfo: banner_id -> { name, rarity, type, isActive, startDate }
+//   outfits:    one entry per (banner_id, outfit_name, rarity) — re-runs share
+//               card_pool_id, so we dedupe to avoid double-counting.
+// The catalog returns one row per (banner, outfit) — banners with both a 5★
+// and a 4★ featured outfit yield two rows that collapse into one bannerInfo
+// entry (max rarity, OR'd active flag, earliest start).
+function loadScheduleViews() {
   const rows = db.getSchedule('nikki', 'banner');
   const today = new Date().toISOString().slice(0, 10);
-  const info = new Map();
+  const bannerInfo = new Map();
+  const outfits = [];
+  const seen = new Set();
+
   for (const r of rows) {
     const bid = r.featured?.banner_id;
     if (!bid) continue;
     const rarity = r.featured.rarity || 0;
     const isActive = r.start <= today && (!r.end || today <= r.end);
-    const cur = info.get(bid);
+    const cur = bannerInfo.get(bid);
     if (!cur) {
-      info.set(bid, {
+      bannerInfo.set(bid, {
         name: r.name,
         rarity,
         isActive,
@@ -33,62 +37,36 @@ function buildBannerInfo() {
       if (isActive) cur.isActive = true;
       if (r.start < cur.startDate) cur.startDate = r.start;
     }
-  }
-  return info;
-}
 
-/**
- * Return one entry per (banner_id, outfit_name, rarity) — deduped because
- * banner re-runs share card_pool_id and would otherwise double-count outfits.
- */
-function getOutfits() {
-  const rows = db.getSchedule('nikki', 'banner');
-  const out = [];
-  const seen = new Set();
-  for (const r of rows) {
-    const bannerId = r.featured?.banner_id;
     const outfitName = r.featured?.outfit_name;
-    const rarity = r.featured?.rarity;
-    if (!bannerId || !outfitName) continue;
-    const key = `${bannerId}|${outfitName}|${rarity}`;
+    if (!outfitName) continue;
+    const key = `${bid}|${outfitName}|${rarity}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({
-      bannerId,
+    outfits.push({
+      bannerId: bid,
       bannerName: r.name,
       outfitName,
       rarity,
       clothIds: (r.featured.cloth_ids || []).map(String),
     });
   }
-  return out;
+
+  return { bannerInfo, outfits };
 }
 
-/**
- * Returns a Map<cloth_id, count> from per-pull data — used for the pulls-based
- * (180-day) fallback when no lifetime snapshot exists for the user.
- */
 function pulledClothIdCounts(pulls) {
   const counts = new Map();
   for (const p of pulls) {
-    try {
-      const extra = JSON.parse(p.extra_json || '{}');
-      if (extra.item_id != null) {
-        const id = String(extra.item_id);
-        counts.set(id, (counts.get(id) || 0) + 1);
-      }
-    } catch {
-      /* ignore malformed */
+    const extra = JSON.parse(p.extra_json || '{}');
+    if (extra.item_id != null) {
+      const id = String(extra.item_id);
+      counts.set(id, (counts.get(id) || 0) + 1);
     }
   }
   return counts;
 }
 
-/**
- * Same shape, but built from lifetime events. Each event = one cloth piece
- * pulled at that rarity. Counts let us detect color-scheme unlocks across the
- * full lifetime, not just the 180-day window.
- */
 function lifetimeClothIdCounts(events) {
   const counts = new Map();
   for (const e of events) {
@@ -98,11 +76,6 @@ function lifetimeClothIdCounts(events) {
   return counts;
 }
 
-/**
- * For pulls in a category, compute per-rarity (pieces, avgPerPiece).
- * avgPerPiece = avg of `pulls_since_last_X + 1` across all events of rarity X
- * on each banner — matches Pearpal's Whim-Log "per piece" metric.
- */
 function computeCategoryStatsFromPulls(pulls) {
   const byBanner = new Map();
   for (const p of pulls) {
@@ -134,18 +107,9 @@ function computeCategoryStatsFromPulls(pulls) {
   };
 }
 
-/**
- * The lifetime endpoint's gacha_list includes upgrade/evolution events as
- * extra entries on the same cloth_id (a piece can be summoned at most 2x in
- * Nikki, so any 3rd+ occurrence is the in-game "upgrade" action firing a new
- * gacha_list event). To reconstruct real summon counts we sort by
- * (banner, pool_cnt) and keep only the first 2 occurrences per cloth_id.
- *
- * Empirically reproduces Pearpal's Whim-Log "pieces" + "per piece" totals
- * exactly for limited 5★, limited 4★, and perma 5★. Perma 4★ still under-
- * counts vs Pearpal's display (cause unknown — likely a display quirk or
- * undocumented backfill on Pearpal's side).
- */
+// Pieces summon at most 2x in Nikki, so any 3rd+ entry on a cloth_id is an
+// in-game upgrade event firing a synthetic gacha_list row. Capping at 2 (after
+// sorting by (banner, pool_cnt)) reproduces Pearpal's Whim-Log totals.
 function applyCapAtTwo(events) {
   const sorted = [...events].sort((a, b) => {
     if (a.banner_id !== b.banner_id) return a.banner_id < b.banner_id ? -1 : 1;
@@ -164,11 +128,6 @@ function applyCapAtTwo(events) {
   return out;
 }
 
-/**
- * Per-rarity pieces + avg-per-piece. Uses cap-at-2 events for piece counts and
- * pulls_to_obtain (so upgrade events don't inflate the piece count or skew the
- * pity average).
- */
 function computeCategoryStatsFromLifetime(events) {
   const realPulls = applyCapAtTwo(events);
   const acc = { 5: { sum: 0, count: 0 }, 4: { sum: 0, count: 0 } };
@@ -200,8 +159,7 @@ function buildStatsEmbed(allPulls, _bannerMap, discordId) {
   const lifetimeEvents = discordId ? db.getNikkiLifetimeEvents(discordId) : [];
   const useLifetime = lifetimeEvents.length > 0;
 
-  const bannerInfo = buildBannerInfo();
-  const outfits = getOutfits();
+  const { bannerInfo, outfits } = loadScheduleViews();
 
   const limitedBids = new Set();
   const permBids = new Set();
@@ -268,8 +226,7 @@ function buildStatsEmbed(allPulls, _bannerMap, discordId) {
     .setDescription(lines.length ? lines.join('\n') : 'No pulls found.')
     .setFooter({ text: footerText });
 
-  const lastImport = discordId ? db.getLastImport(discordId, 'nikki') : null;
-  if (lastImport) embed.setTimestamp(lastImport);
+  db.applyLastImportTimestamp(embed, discordId, 'nikki');
 
   return [embed];
 }
@@ -278,11 +235,8 @@ function buildHistoryEmbed(allPulls, _bannerMap, discordId) {
   const lifetimeEvents = discordId ? db.getNikkiLifetimeEvents(discordId) : [];
   const useLifetime = lifetimeEvents.length > 0;
 
-  const bannerInfo = buildBannerInfo();
-  const outfits = getOutfits();
+  const { bannerInfo, outfits } = loadScheduleViews();
 
-  // Per-banner pull totals + cloth_id counts come from whichever source is
-  // available. Lifetime is preferred for accuracy; pulls is the 180-day fallback.
   const pullsPerBanner = new Map();
   let counts;
   if (useLifetime) {
@@ -306,7 +260,6 @@ function buildHistoryEmbed(allPulls, _bannerMap, discordId) {
     outfitsByBanner.get(o.bannerId).push(o);
   }
 
-  // Show only banners user has pulled on, newest first by start date.
   const bannersWithPulls = [...pullsPerBanner.keys()]
     .filter(bid => bannerInfo.has(bid))
     .sort((a, b) => {
@@ -330,8 +283,6 @@ function buildHistoryEmbed(allPulls, _bannerMap, discordId) {
       const owned = o.clothIds.filter(id => (counts.get(id) || 0) >= 1).length;
       const colorOwned = o.clothIds.filter(id => (counts.get(id) || 0) >= 2).length;
       const tot = o.clothIds.length;
-      // Hide perma outfits with zero pieces — otherwise the perma section
-      // would list every standard outfit ever.
       if (info.type === 'permanent' && owned === 0) continue;
       // 🎨 marker = full color scheme unlocked (every piece pulled 2x+).
       const marker = colorOwned === tot ? ' 🎨' : '';

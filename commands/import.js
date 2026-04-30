@@ -66,7 +66,6 @@ module.exports = {
       const pulls = game.api.normalizePulls(raw);
       const { inserted, skipped } = db.insertPulls(interaction.user.id, gameId, pulls);
 
-      // Game-specific extras (e.g. Nikki lifetime aggregates)
       if (typeof game.api.persistExtras === 'function') {
         game.api.persistExtras(interaction.user.id, raw);
       }

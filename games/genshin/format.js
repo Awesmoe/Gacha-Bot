@@ -1,57 +1,21 @@
 const { EmbedBuilder } = require('discord.js');
-const { analyzePulls } = require('../../lib/analytics');
+const { analyzePulls, groupPullsByType } = require('../../lib/analytics');
+const { formatServerDate, featuredForPullOnSchedule } = require('../../lib/time');
 const config = require('./config');
 const db = require('../../lib/db');
 
 const RESULT_LABEL = { won: '✅ Won', lost: '❌ Lost', guaranteed: '🔒 Guaranteed', unknown: '❓' };
 
-// gacha_ts is stored as the UTC ms epoch of the server-time wall clock; +8h
-// recovers the server-side calendar date regardless of the host's local TZ.
-function getServerDateKey(gachaTs) {
-  return new Date(Number(gachaTs) + 8 * 3600000).toISOString().slice(0, 10);
-}
-
-function formatServerDate(gachaTs) {
-  return new Date(Number(gachaTs) + 8 * 3600000)
-    .toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
-}
-
-function getFeaturedForPullFromSchedule(pull, schedule) {
-  const pullDate = getServerDateKey(pull.gacha_ts);
-  const allFeatured = new Set();
-
-  for (const banner of schedule) {
-    if (pullDate >= banner.start && (!banner.end || pullDate < banner.end)) {
-      for (const item of banner.featured) {
-        allFeatured.add(item);
-      }
-    }
-  }
-
-  return allFeatured.size > 0 ? [...allFeatured] : null;
-}
-
 function getFeaturedCharactersForPull(pull) {
-  return getFeaturedForPullFromSchedule(pull, db.getSchedule('genshin', 'character'));
+  return featuredForPullOnSchedule(pull, db.getSchedule('genshin', 'character'));
 }
 
 function getFeaturedWeaponsForPull(pull) {
-  return getFeaturedForPullFromSchedule(pull, db.getSchedule('genshin', 'weapon'));
-}
-
-function groupPullsByType(allPulls) {
-  const grouped = {};
-  for (const key of Object.keys(config.bannerTypes)) grouped[key] = [];
-  for (const p of allPulls) {
-    const type = config.classifyPull(p);
-    if (!grouped[type]) grouped[type] = [];
-    grouped[type].push(p);
-  }
-  return grouped;
+  return featuredForPullOnSchedule(pull, db.getSchedule('genshin', 'weapon'));
 }
 
 function buildStatsEmbed(allPulls, bannerMap, discordId) {
-  const grouped = groupPullsByType(allPulls);
+  const grouped = groupPullsByType(allPulls, config);
 
   const total = allPulls.length;
   const overview = new EmbedBuilder()
@@ -60,8 +24,7 @@ function buildStatsEmbed(allPulls, bannerMap, discordId) {
     .setDescription(`**${total}** total wishes across all banners`)
     .setFooter({ text: 'Genshin Impact' });
 
-  const lastImport = discordId ? db.getLastImport(discordId, 'genshin') : null;
-  if (lastImport) overview.setTimestamp(lastImport);
+  db.applyLastImportTimestamp(overview, discordId, 'genshin');
 
   for (const [key, bt] of Object.entries(config.bannerTypes)) {
     const pulls = grouped[key];
@@ -103,7 +66,7 @@ function buildStatsEmbed(allPulls, bannerMap, discordId) {
 }
 
 function buildHistoryEmbed(allPulls, bannerMap) {
-  const grouped = groupPullsByType(allPulls);
+  const grouped = groupPullsByType(allPulls, config);
 
   const embeds = [];
 
