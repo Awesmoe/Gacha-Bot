@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { analyzePulls } = require('../../lib/analytics');
+const db = require('../../lib/db');
 const config = require('./config');
 
 const RARITY_EMOJI = { 6: '🟡', 5: '🟣', 4: '🔵', 3: '⚪' };
@@ -21,7 +22,7 @@ function groupPullsByType(allPulls) {
  * @param {Array} allPulls - all DB rows for this user+game
  * @param {Object} bannerMap - poolName → featured char
  */
-function buildStatsEmbed(allPulls, bannerMap) {
+function buildStatsEmbed(allPulls, bannerMap, discordId) {
   const grouped = groupPullsByType(allPulls);
 
   const embeds = [];
@@ -29,10 +30,13 @@ function buildStatsEmbed(allPulls, bannerMap) {
   // Overview embed
   const total = allPulls.length;
   const overview = new EmbedBuilder()
-    .setTitle('📊 Pull Statistics')
-    .setColor(0xf59e0b)
+    .setTitle('📊 Endfield Statistics')
+    .setColor(0xdc2626)
     .setDescription(`**${total}** total pulls across all banners`)
     .setFooter({ text: 'Arknights: Endfield' });
+
+  const lastImport = discordId ? db.getLastImport(discordId, 'endfield') : null;
+  if (lastImport) overview.setTimestamp(lastImport);
 
   // Per banner type
   for (const [key, bt] of Object.entries(config.bannerTypes)) {
@@ -95,7 +99,7 @@ function buildHistoryEmbed(allPulls, bannerMap) {
 
     const embed = new EmbedBuilder()
       .setTitle(`${bt.label} — 6★ History`)
-      .setColor(bt.has5050 ? 0xf59e0b : (key === 'weapon' ? 0x3b82f6 : 0xa855f7));
+      .setColor(0xdc2626);
 
     // Show most recent first, cap at 20
     const recent = [...analysis.sixStars].reverse().slice(0, 20);
@@ -132,12 +136,12 @@ function buildHistoryEmbed(allPulls, bannerMap) {
 function buildImportEmbed(inserted, skipped, totalByType) {
   return new EmbedBuilder()
     .setTitle('✅ Import Complete')
-    .setColor(0x22c55e)
+    .setColor(0xdc2626)
     .setDescription(
       `**${inserted}** new pulls imported, **${skipped}** duplicates skipped\n` +
       `Characters: **${totalByType.characters ?? 0}** · Weapons: **${totalByType.weapons ?? 0}**`
     )
-    .setFooter({ text: 'Use /stats to see your pull statistics' });
+    .setFooter({ text: 'Use /stats and /history to see your data' });
 }
 
 module.exports = { buildStatsEmbed, buildHistoryEmbed, buildImportEmbed };

@@ -50,15 +50,18 @@ function groupPullsByType(allPulls) {
   return grouped;
 }
 
-function buildStatsEmbed(allPulls, bannerMap) {
+function buildStatsEmbed(allPulls, bannerMap, discordId) {
   const grouped = groupPullsByType(allPulls);
 
   const total = allPulls.length;
   const overview = new EmbedBuilder()
-    .setTitle('📊 Wish Statistics')
+    .setTitle('📊 Genshin Statistics')
     .setColor(0x1a78c2)
     .setDescription(`**${total}** total wishes across all banners`)
     .setFooter({ text: 'Genshin Impact' });
+
+  const lastImport = discordId ? db.getLastImport(discordId, 'genshin') : null;
+  if (lastImport) overview.setTimestamp(lastImport);
 
   for (const [key, bt] of Object.entries(config.bannerTypes)) {
     const pulls = grouped[key];
@@ -124,7 +127,7 @@ function buildHistoryEmbed(allPulls, bannerMap) {
 
     const embed = new EmbedBuilder()
       .setTitle(`${bt.label} — 5★ History`)
-      .setColor(bt.has5050 ? 0x1a78c2 : 0x7b68ee);
+      .setColor(0x1a78c2);
 
     const recent = [...analysis.sixStars].reverse().slice(0, 20);
     const lines = recent.map(p => {
@@ -155,11 +158,11 @@ function buildImportEmbed(inserted, skipped, totalByType) {
 
   return new EmbedBuilder()
     .setTitle('✅ Import Complete')
-    .setColor(0x22c55e)
+    .setColor(0x1a78c2)
     .setDescription(
       `**${inserted}** new wishes imported, **${skipped}** duplicates skipped\n${breakdown}`
     )
-    .setFooter({ text: 'Use /stats to see your wish statistics' });
+    .setFooter({ text: 'Use /stats and /history to see your data' });
 }
 
 module.exports = { buildStatsEmbed, buildHistoryEmbed, buildImportEmbed };

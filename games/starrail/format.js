@@ -78,15 +78,18 @@ function getFeaturedLightConesForPull(pull) {
  * Build stats embeds for HSR.
  * HSR uses 5★ as max rarity (not 6★ like Endfield).
  */
-function buildStatsEmbed(allPulls, bannerMap) {
+function buildStatsEmbed(allPulls, bannerMap, discordId) {
   const grouped = groupPullsByType(allPulls);
 
   const total = allPulls.length;
   const overview = new EmbedBuilder()
-    .setTitle('📊 Warp Statistics')
-    .setColor(0x7b68ee)
+    .setTitle('📊 Star Rail Statistics')
+    .setColor(0x9ca3af)
     .setDescription(`**${total}** total warps across all banners`)
     .setFooter({ text: 'Honkai: Star Rail' });
+
+  const lastImport = discordId ? db.getLastImport(discordId, 'starrail') : null;
+  if (lastImport) overview.setTimestamp(lastImport);
 
   for (const [key, bt] of Object.entries(config.bannerTypes)) {
     const pulls = grouped[key];
@@ -167,7 +170,7 @@ function buildHistoryEmbed(allPulls, bannerMap) {
 
     const embed = new EmbedBuilder()
       .setTitle(`${bt.label} — 5★ History`)
-      .setColor(bt.has5050 ? 0xffd700 : 0x7b68ee);
+      .setColor(0x9ca3af);
 
     const recent = [...analysis.sixStars].reverse().slice(0, 20);
     const lines = recent.map(p => {
@@ -198,11 +201,11 @@ function buildImportEmbed(inserted, skipped, totalByType) {
 
   return new EmbedBuilder()
     .setTitle('✅ Import Complete')
-    .setColor(0x22c55e)
+    .setColor(0x9ca3af)
     .setDescription(
       `**${inserted}** new warps imported, **${skipped}** duplicates skipped\n${breakdown}`
     )
-    .setFooter({ text: 'Use /stats to see your warp statistics' });
+    .setFooter({ text: 'Use /stats and /history to see your data' });
 }
 
 module.exports = { buildStatsEmbed, buildHistoryEmbed, buildImportEmbed };

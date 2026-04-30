@@ -258,15 +258,18 @@ function buildStatsEmbed(allPulls, _bannerMap, discordId) {
     lines.push(`**Permanent 4★** — ${ps.four.pieces} pieces`);
   }
 
-  const footerScope = useLifetime
-    ? 'lifetime'
-    : `${totalPulls} pulls in the last ~180 days`;
+  const footerText = useLifetime
+    ? 'Infinity Nikki'
+    : `Infinity Nikki · ${totalPulls} pulls in the last ~180 days`;
 
   const embed = new EmbedBuilder()
-    .setTitle('📊 Pull Statistics')
+    .setTitle('📊 Nikki Statistics')
     .setColor(COLOR)
     .setDescription(lines.length ? lines.join('\n') : 'No pulls found.')
-    .setFooter({ text: `Infinity Nikki · ${footerScope}` });
+    .setFooter({ text: footerText });
+
+  const lastImport = discordId ? db.getLastImport(discordId, 'nikki') : null;
+  if (lastImport) embed.setTimestamp(lastImport);
 
   return [embed];
 }
@@ -372,22 +375,20 @@ function buildHistoryEmbed(allPulls, _bannerMap, discordId) {
 }
 
 function buildImportEmbed(inserted, skipped, totalByType) {
-  const pullCount = totalByType.pulls || 0;
   const lifetimeCount = totalByType.lifetimeEvents || 0;
 
   const desc = [
     `**${inserted}** new pulls imported, **${skipped}** duplicates skipped`,
-    `Total fetched: **${pullCount}** pulls (last ~180 days)`,
   ];
   if (lifetimeCount > 0) {
     desc.push(`Lifetime snapshot refreshed: **${lifetimeCount}** 4★/5★ events`);
   }
 
   return new EmbedBuilder()
-    .setTitle('Import Complete')
+    .setTitle('✅ Import Complete')
     .setColor(COLOR)
     .setDescription(desc.join('\n'))
-    .setFooter({ text: 'Use /stats and /history to see your data · Infinity Nikki' });
+    .setFooter({ text: 'Use /stats and /history to see your data' });
 }
 
 module.exports = { buildImportEmbed, buildStatsEmbed, buildHistoryEmbed };

@@ -23,7 +23,7 @@ module.exports = {
     if (gameId === 'endfield') {
       const embed = new EmbedBuilder()
         .setTitle('How to Import — Arknights: Endfield')
-        .setColor(0xf59e0b)
+        .setColor(0xdc2626)
         .setDescription(
           '**Step 1:** Open Arknights: Endfield and go to the **Headhunting Records** page (view your pull history for any banner).\n\n' +
           '**Step 2:** Open **PowerShell** on your PC and paste this command:\n' +
@@ -43,7 +43,7 @@ module.exports = {
     if (gameId === 'starrail') {
       const embed = new EmbedBuilder()
         .setTitle('How to Import — Honkai: Star Rail')
-        .setColor(0x7b68ee)
+        .setColor(0x9ca3af)
         .setDescription(
           '**Step 1:** Open Honkai: Star Rail and go to the **Warp Records** page (view history for any banner).\n\n' +
           '**Step 2:** Open **PowerShell** on your PC and paste this command:\n' +

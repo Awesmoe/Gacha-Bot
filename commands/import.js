@@ -71,6 +71,8 @@ module.exports = {
         game.api.persistExtras(interaction.user.id, raw);
       }
 
+      db.recordImport(interaction.user.id, gameId);
+
       const importBreakdown = {};
       for (const [key, value] of Object.entries(raw)) {
         importBreakdown[key] = Array.isArray(value) ? value.length : 0;

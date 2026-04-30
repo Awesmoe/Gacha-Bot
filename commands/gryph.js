@@ -54,7 +54,7 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle('Banner Mappings — Arknights: Endfield')
-        .setColor(0xf59e0b)
+        .setColor(0xdc2626)
         .setDescription(banners.map(b => `**${b.pool_name}** → ${b.featured_item}`).join('\n'));
 
       return interaction.reply({ embeds: [embed], ephemeral: true });

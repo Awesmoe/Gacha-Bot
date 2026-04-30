@@ -85,7 +85,7 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle(`Banner Schedule — ${gameId}/${bannerType}`)
-        .setColor(0xf59e0b)
+        .setColor(gameId === 'starrail' ? 0x9ca3af : 0x1a78c2)
         .setDescription(lines.join('\n'))
         .setFooter({ text: `${entries.length} total entries${entries.length > 25 ? ' (showing last 25)' : ''}` });
 
